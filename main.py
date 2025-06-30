@@ -14,36 +14,37 @@ PORT = int(os.environ.get("PORT", 10000))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === Flask keep-alive ===
+# === Flask keep-alive server ===
 flask_app = Flask(__name__)
 
 @flask_app.route("/", methods=["GET"])
 def home():
     return "✅ MansourAI bot is running!"
 
-# === Telegram command handlers ===
+# === Telegram command handler ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello! I'm alive and ready! 🚀")
 
-# === Create and return bot application ===
-def create_app():
+# === Create the Telegram bot application ===
+def create_bot_app():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     return app
 
-# === Async bot runner ===
+# === Run the bot ===
 async def run_bot():
-    app = create_app()
+    app = create_bot_app()
     logger.info("🤖 Starting MansourAI bot with polling...")
     await app.run_polling()
 
-# === Main entrypoint ===
+# === Main entry point ===
 if __name__ == "__main__":
-    # Start Flask server in a separate thread
+    # Start Flask in a background thread
     threading.Thread(target=lambda: flask_app.run(host="0.0.0.0", port=PORT)).start()
 
-    # Apply fix for "event loop is already running"
+    # Apply asyncio patch
     import nest_asyncio
     nest_asyncio.apply()
 
-    asyncio.get_event_loop().run_until_complete(run_bot())
+    # Start bot
+    asyncio.run(run_bot())
