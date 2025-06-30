@@ -1,39 +1,70 @@
-import os import logging import openai from flask import Flask, request from telegram import Bot, Update from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+import os
+import logging
+from flask import Flask, request
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+import openai
 
-=== Constants ===
+# === Configuration ===
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7788071056:AAECYEfIuxQYcCyS_DgAYaif1JHc_v9A5U8")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://mansoursaibotlearn.onrender.com/webhook")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "sk-...")  # replace with real key
 
-BOT_TOKEN = "7788071056:AAECYEfIuxQYcCyS_DgAYaif1JHc_v9A5U8" OPENAI_API_KEY = "sk-proj-4gALccr-Fg2MbJ_-iV511ZPmKgEwlI0v7pVAvbFjAZXGNgF" WEBHOOK_URL = "https://mansoursaibotlearn.onrender.com" PORT = int(os.environ.get("PORT", 10000))
+# === Logging ===
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-=== Logging ===
-
-logging.basicConfig(level=logging.INFO) logger = logging.getLogger(name)
-
-=== OpenAI API ===
-
+# === OpenAI Setup ===
 openai.api_key = OPENAI_API_KEY
 
-def ask_gpt(message_text): try: response = openai.ChatCompletion.create( model="gpt-3.5-turbo", messages=[{"role": "user", "content": message_text}] ) return response.choices[0].message.content.strip() except Exception as e: logger.error(f"OpenAI error: {e}") return "Sorry, something went wrong."
+# === Flask App ===
+app = Flask(__name__)
 
-=== Flask App ===
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ MansourAI bot is live (Webhook mode)"
 
-flask_app = Flask(name) bot = Bot(token=BOT_TOKEN)
+@app.route("/webhook", methods=["POST"])
+async def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    await application.process_update(update)
+    return "OK"
 
-@flask_app.route("/", methods=["GET"]) def index(): return "✅ MansourAI bot is running!"
+# === Telegram Handlers ===
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Hello! I'm MansourAI 🤖 Ask me anything!")
 
-@flask_app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"]) def webhook(): if request.method == "POST": update = Update.de_json(request.get_json(force=True), bot) app.update_queue.put(update) return "OK"
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_message = update.message.text
+    chat_id = update.effective_chat.id
 
-=== Handlers ===
+    try:
+        reply = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": user_message}]
+        )
+        bot_reply = reply['choices'][0]['message']['content']
+    except Exception as e:
+        bot_reply = f"⚠️ Error: {str(e)}"
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text("Hello! I'm alive and ready! 🚀")
+    await context.bot.send_message(chat_id=chat_id, text=bot_reply)
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE): user_message = update.message.text reply = ask_gpt(user_message) await update.message.reply_text(reply)
+# === Setup Application ===
+bot = Bot(token=BOT_TOKEN)
+application = ApplicationBuilder().token(BOT_TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-=== Telegram Application ===
+# === Set Webhook and Run Flask ===
+if __name__ == "__main__":
+    import nest_asyncio
+    import asyncio
 
-app = ApplicationBuilder().token(BOT_TOKEN).build() app.add_handler(CommandHandler("start", start)) app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    nest_asyncio.apply()
 
-if name == "main": # Set webhook webhook_url = f"{WEBHOOK_URL}/webhook/{BOT_TOKEN}" bot.set_webhook(url=webhook_url) logger.info(f"🚀 Webhook set to {webhook_url}")
+    async def setup():
+        await bot.set_webhook(WEBHOOK_URL)
+        logger.info(f"🌐 Webhook set to {WEBHOOK_URL}")
 
-# Start Flask app
-flask_app.run(host="0.0.0.0", port=PORT)
-
+    asyncio.get_event_loop().run_until_complete(setup())
+    app.run(host="0.0.0.0", port=10000)
