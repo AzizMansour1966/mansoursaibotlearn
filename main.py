@@ -1,74 +1,50 @@
-import os
-import logging
-import asyncio
-import threading
-import openai
+main.py
 
-from flask import Flask
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-)
+import os import logging from flask import Flask from telegram import Update from telegram.ext import ( ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters ) import openai import nest_asyncio import threading import asyncio
 
-# === Environment Variables ===
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "your-fallback-token-here")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "your-fallback-openai-key")
-PORT = int(os.environ.get("PORT", 10000))
+=== Configuration ===
 
-# === Configure OpenAI ===
-openai.api_key = OPENAI_API_KEY
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE") OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY_HERE") PORT = int(os.environ.get("PORT", 10000)) openai.api_key = OPENAI_API_KEY
 
-# === Logging ===
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+=== Logging ===
 
-# === Flask App for Keep-Alive ===
-flask_app = Flask(__name__)
+logging.basicConfig(level=logging.INFO) logger = logging.getLogger(name)
 
-@flask_app.route("/", methods=["GET"])
-def home():
-    return "✅ MansourAI bot is running!"
+=== Flask Keep-Alive ===
 
-# === Telegram Command Handlers ===
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I'm alive and ready! 🚀")
+flask_app = Flask(name)
 
-async def chatgpt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    prompt = " ".join(context.args)
-    if not prompt:
-        await update.message.reply_text("Please provide a prompt after /ask.")
-        return
+@flask_app.route("/") def home(): return "✅ MansourAI bot is running!"
 
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        reply = response.choices[0].message.content
-        await update.message.reply_text(reply)
-    except Exception as e:
-        logger.exception("OpenAI API error")
-        await update.message.reply_text("Something went wrong with OpenAI.")
+=== Handlers ===
 
-# === Create Telegram App ===
-def create_bot():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ask", chatgpt))
-    return app
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text("Hello! I'm alive and ready! 🚀")
 
-# === Main Entrypoint ===
-if __name__ == "__main__":
-    # Start Flask server in background
-    threading.Thread(target=lambda: flask_app.run(host="0.0.0.0", port=PORT)).start()
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE): user_message = update.message.text logger.info(f"Received message: {user_message}")
 
-    # Apply workaround for running in existing event loops
-    import nest_asyncio
-    nest_asyncio.apply()
+try:
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a friendly and funny assistant."},
+            {"role": "user", "content": user_message}
+        ]
+    )
+    reply = response.choices[0].message.content
+except Exception as e:
+    logger.error(f"OpenAI error: {e}")
+    reply = "Oops! Something went wrong with the AI."
 
-    # Start Telegram bot
-    bot_app = create_bot()
-    logger.info("🤖 Starting MansourAI bot with polling...")
-    asyncio.get_event_loop().run_until_complete(bot_app.run_polling())
+await update.message.reply_text(reply)
+
+=== Bot Setup ===
+
+def create_bot(): app = ApplicationBuilder().token(BOT_TOKEN).build() app.add_handler(CommandHandler("start", start)) app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)) return app
+
+=== Run ===
+
+if name == "main": nest_asyncio.apply() threading.Thread(target=lambda: flask_app.run(host="0.0.0.0", port=PORT)).start()
+
+bot_app = create_bot()
+asyncio.run(bot_app.run_polling())
+
