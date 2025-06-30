@@ -1,72 +1,55 @@
 import os
-import logging
 import asyncio
-import threading
 from flask import Flask, request
 from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-import httpx
-import openai
-import nest_asyncio
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# === Load tokens ===
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7788071056:AAECYEfIuxQYcCyS_DgAYaif1JHc_v9A5U8")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "sk-your-real-openai-key-here")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://mansoursaibotlearn.onrender.com/webhook")
+# Load your secrets from environment variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# === Logging ===
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Flask setup
+app = Flask(__name__)
 
-# === Flask app ===
-flask_app = Flask(__name__)
-
-@flask_app.route("/", methods=["GET"])
-def home():
-    return "✅ MansourAI bot is live with webhook!"
-
-@flask_app.route("/webhook", methods=["POST"])
-async def webhook():
-    data = request.get_json()
-    update = Update.de_json(data, bot)
-    await application.process_update(update)
-    return "OK"
-
-# === GPT-3.5 handler ===
-async def ask_gpt(prompt):
-    openai.api_key = OPENAI_API_KEY
-    response = await openai.ChatCompletion.acreate(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
-
-# === Telegram handlers ===
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Hello! Send me a message and I’ll ask ChatGPT!")
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_msg = update.message.text
-    reply = await ask_gpt(user_msg)
-    await update.message.reply_text(reply)
-
-# === Setup bot ===
+# Telegram Bot and Application
 bot = Bot(token=BOT_TOKEN)
-application = ApplicationBuilder().token(BOT_TOKEN).build()
+application = Application.builder().token(BOT_TOKEN).build()
+
+# === Your Telegram handlers ===
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Hello! I'm alive.")
+
 application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# === Entrypoint ===
+# === Webhook route ===
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    try:
+        data = request.get_json(force=True)
+        update = Update.de_json(data, bot)
+        asyncio.create_task(application.process_update(update))
+        return "OK", 200
+    except Exception as e:
+        print(f"Webhook error: {e}")
+        return "Error", 500
+
+# === Health check route ===
+
+@app.route("/", methods=["GET"])
+def index():
+    return "Bot is alive", 200
+
+# === App startup ===
+
 if __name__ == "__main__":
-    nest_asyncio.apply()
-
-    # Set webhook
+    # Set the webhook on startup
     async def set_webhook():
-        await bot.set_webhook(url=WEBHOOK_URL)
-        logger.info(f"🌐 Webhook set to {WEBHOOK_URL}")
+        await bot.set_webhook(WEBHOOK_URL)
+        print(f"🌐 Webhook set to {WEBHOOK_URL}")
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(set_webhook())
+    asyncio.run(set_webhook())
 
     # Run Flask server
-    threading.Thread(target=lambda: flask_app.run(host="0.0.0.0", port=10000)).start()
+    app.run(host="0.0.0.0", port=10000)
