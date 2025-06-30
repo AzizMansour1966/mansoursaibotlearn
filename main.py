@@ -1,41 +1,74 @@
-import os import logging import asyncio import threading from flask import Flask from telegram import Update from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes import openai
+import os
+import logging
+import asyncio
+import threading
+import openai
 
-=== Load env vars ===
+from flask import Flask
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+)
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN") OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY") PORT = int(os.environ.get("PORT", 10000))
+# === Environment Variables ===
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "your-fallback-token-here")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "your-fallback-openai-key")
+PORT = int(os.environ.get("PORT", 10000))
 
-=== Logging ===
+# === Configure OpenAI ===
+openai.api_key = OPENAI_API_KEY
 
-logging.basicConfig(level=logging.INFO) logger = logging.getLogger(name)
+# === Logging ===
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-=== Flask keep-alive ===
+# === Flask App for Keep-Alive ===
+flask_app = Flask(__name__)
 
-flask_app = Flask(name)
+@flask_app.route("/", methods=["GET"])
+def home():
+    return "✅ MansourAI bot is running!"
 
-@flask_app.route("/", methods=["GET"]) def home(): return "✅ MansourAI bot is running!"
+# === Telegram Command Handlers ===
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Hello! I'm alive and ready! 🚀")
 
-=== Telegram handlers ===
+async def chatgpt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = " ".join(context.args)
+    if not prompt:
+        await update.message.reply_text("Please provide a prompt after /ask.")
+        return
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text("Hello! I'm MansourAI 🤖 Ask me anything!")
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        reply = response.choices[0].message.content
+        await update.message.reply_text(reply)
+    except Exception as e:
+        logger.exception("OpenAI API error")
+        await update.message.reply_text("Something went wrong with OpenAI.")
 
-async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE): user_input = update.message.text try: response = openai.ChatCompletion.create( model="gpt-3.5-turbo", messages=[ {"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": user_input} ] ) reply = response.choices[0].message.content except Exception as e: reply = f"⚠️ Error: {e}"
+# === Create Telegram App ===
+def create_bot():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("ask", chatgpt))
+    return app
 
-await update.message.reply_text(reply)
+# === Main Entrypoint ===
+if __name__ == "__main__":
+    # Start Flask server in background
+    threading.Thread(target=lambda: flask_app.run(host="0.0.0.0", port=PORT)).start()
 
-=== Telegram bot setup ===
+    # Apply workaround for running in existing event loops
+    import nest_asyncio
+    nest_asyncio.apply()
 
-def create_app(): app = ApplicationBuilder().token(BOT_TOKEN).build() app.add_handler(CommandHandler("start", start)) app.add_handler(CommandHandler("ask", chat)) return app
-
-=== Main entrypoint ===
-
-if name == "main": openai.api_key = OPENAI_API_KEY
-
-threading.Thread(target=lambda: flask_app.run(host="0.0.0.0", port=PORT)).start()
-
-import nest_asyncio
-nest_asyncio.apply()
-
-app = create_app()
-logger.info("🤖 Starting MansourAI bot with polling...")
-asyncio.get_event_loop().run_until_complete(app.run_polling())
-
+    # Start Telegram bot
+    bot_app = create_bot()
+    logger.info("🤖 Starting MansourAI bot with polling...")
+    asyncio.get_event_loop().run_until_complete(bot_app.run_polling())
