@@ -1,51 +1,72 @@
-import os import logging import asyncio from flask import Flask, request from telegram import Update, Bot from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes import openai import nest_asyncio
+import os
+import logging
+import asyncio
+import threading
+from flask import Flask, request
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import httpx
+import openai
+import nest_asyncio
 
-=== Environment Variables and Tokens ===
+# === Load tokens ===
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7788071056:AAECYEfIuxQYcCyS_DgAYaif1JHc_v9A5U8")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "sk-your-real-openai-key-here")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://mansoursaibotlearn.onrender.com/webhook")
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7788071056:AAECYEfIuxQYcCyS_DgAYaif1JHc_v9A5U8") OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "sk-skipped-for-safety") WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://mansoursaibotlearn.onrender.com/webhook") PORT = int(os.environ.get("PORT", 10000))
+# === Logging ===
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-=== Configure OpenAI ===
+# === Flask for webhook ===
+flask_app = Flask(__name__)
 
-openai.api_key = OPENAI_API_KEY
+@flask_app.route("/", methods=["GET"])
+def home():
+    return "✅ MansourAI bot is live with webhook!"
 
-=== Logging ===
+@flask_app.route("/webhook", methods=["POST"])
+async def webhook():
+    data = request.get_json()
+    update = Update.de_json(data, bot)
+    await application.process_update(update)
+    return "OK"
 
-logging.basicConfig(level=logging.INFO) logger = logging.getLogger(name)
+# === OpenAI GPT-3.5 handler ===
+async def ask_gpt(prompt):
+    openai.api_key = OPENAI_API_KEY
+    response = await openai.ChatCompletion.acreate(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
 
-=== Flask App ===
+# === Telegram command handler ===
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 Hello! Send me a message and I’ll ask ChatGPT!")
 
-flask_app = Flask(name)
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_msg = update.message.text
+    reply = await ask_gpt(user_msg)
+    await update.message.reply_text(reply)
 
-@flask_app.route("/") def index(): return "✅ MansourAI bot is running via webhook!"
+# === Telegram setup ===
+bot = Bot(token=BOT_TOKEN)
+application = ApplicationBuilder().token(BOT_TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler(None, handle_message))
 
-@flask_app.route("/webhook", methods=["POST"]) def webhook(): if request.method == "POST": update = Update.de_json(request.get_json(force=True), bot) asyncio.run(application.process_update(update)) return "!"
+# === Entrypoint ===
+if __name__ == "__main__":
+    nest_asyncio.apply()
 
-=== Telegram Handlers ===
+    # Set webhook
+    async def set_webhook():
+        await bot.set_webhook(url=WEBHOOK_URL)
+        logger.info(f"🌐 Webhook set to {WEBHOOK_URL}")
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): await update.message.reply_text("Hello! I'm alive and ready! 🚀")
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(set_webhook())
 
-async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE): question = update.message.text.replace("/ask", "").strip() if not question: await update.message.reply_text("Please ask a question after /ask") return
-
-response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo",
-    messages=[{"role": "user", "content": question}],
-)
-answer = response.choices[0].message.content
-await update.message.reply_text(answer)
-
-=== App Initialization ===
-
-bot = Bot(BOT_TOKEN) application = ApplicationBuilder().token(BOT_TOKEN).build() application.add_handler(CommandHandler("start", start)) application.add_handler(CommandHandler("ask", ask))
-
-=== Set Webhook and Run ===
-
-if name == "main": nest_asyncio.apply()
-
-# Set the webhook only once
-bot.delete_webhook()
-bot.set_webhook(url=WEBHOOK_URL)
-logger.info(f"🌐 Webhook set to {WEBHOOK_URL}")
-
-# Start Flask
-flask_app.run(host="0.0.0.0", port=PORT)
-
+    # Run Flask server
+    threading.Thread(target=lambda: flask_app.run(host="0.0.0.0", port=10000)).start()
