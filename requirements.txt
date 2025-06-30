@@ -1,2 +1,4 @@
-python-telegram-bot==20.3
-Flask==3.1.1
+python-telegram-bot==20.3         # Telegram bot library
+Flask==3.1.1                      # Web framework for keep-alive server
+httpx==0.24.1                     # HTTP client used internally by PTB
+nest_asyncio==1.6.0              # Fix for 'event loop already running' in async environments
