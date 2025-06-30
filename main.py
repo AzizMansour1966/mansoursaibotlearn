@@ -4,7 +4,7 @@ import asyncio
 import threading
 from flask import Flask, request
 from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 import httpx
 import openai
 import nest_asyncio
@@ -18,7 +18,7 @@ WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://mansoursaibotlearn.onrender
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === Flask for webhook ===
+# === Flask app ===
 flask_app = Flask(__name__)
 
 @flask_app.route("/", methods=["GET"])
@@ -32,7 +32,7 @@ async def webhook():
     await application.process_update(update)
     return "OK"
 
-# === OpenAI GPT-3.5 handler ===
+# === GPT-3.5 handler ===
 async def ask_gpt(prompt):
     openai.api_key = OPENAI_API_KEY
     response = await openai.ChatCompletion.acreate(
@@ -41,7 +41,7 @@ async def ask_gpt(prompt):
     )
     return response.choices[0].message.content
 
-# === Telegram command handler ===
+# === Telegram handlers ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Hello! Send me a message and I’ll ask ChatGPT!")
 
@@ -50,11 +50,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = await ask_gpt(user_msg)
     await update.message.reply_text(reply)
 
-# === Telegram setup ===
+# === Setup bot ===
 bot = Bot(token=BOT_TOKEN)
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler(None, handle_message))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # === Entrypoint ===
 if __name__ == "__main__":
