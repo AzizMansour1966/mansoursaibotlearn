@@ -1,33 +1,37 @@
 import os
 import asyncio
+from dotenv import load_dotenv
 from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# === Load tokens from environment ===
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# === Load environment variables from .env ===
+load_dotenv()
+
+# Match the keys in your .env file
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# === Safety check ===
+# Safety checks
 if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN is missing. Set it in the environment variables.")
+    raise ValueError("❌ TELEGRAM_BOT_TOKEN is missing. Check your .env or Render environment.")
 if not WEBHOOK_URL:
-    raise ValueError("❌ WEBHOOK_URL is missing. Set it in the environment variables.")
+    raise ValueError("❌ WEBHOOK_URL is missing. Check your .env or Render environment.")
 
 # === Flask App ===
 app = Flask(__name__)
 
-# === Telegram Bot and Application ===
+# === Telegram Bot and App ===
 bot = Bot(token=BOT_TOKEN)
 application = Application.builder().token(BOT_TOKEN).build()
 
-# === Telegram Command Handlers ===
+# === Command handler ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bot is running!")
 
 application.add_handler(CommandHandler("start", start))
 
-# === Webhook endpoint ===
+# === Webhook route ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -39,7 +43,7 @@ def webhook():
         print(f"❌ Webhook error: {e}")
         return "Error", 500
 
-# === Health Check ===
+# === Health check ===
 @app.route("/", methods=["GET"])
 def index():
     return "🤖 Bot is alive", 200
