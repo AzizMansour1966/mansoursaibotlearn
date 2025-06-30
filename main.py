@@ -1,4 +1,6 @@
-import os import logging import asyncio import threading from flask import Flask from telegram import Update from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import os import logging import asyncio import threading
+
+from flask import Flask from telegram import Update from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 === Load env vars ===
 
@@ -22,10 +24,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): await updat
 
 def create_app(): app = ApplicationBuilder().token(BOT_TOKEN).build() app.add_handler(CommandHandler("start", start)) return app
 
-=== Bot runner ===
-
-async def run_bot(): app = create_app() await app.run_polling()
-
 === Main entrypoint ===
 
 if name == "main": # Start Flask in background threading.Thread(target=lambda: flask_app.run(host="0.0.0.0", port=PORT)).start()
@@ -34,6 +32,7 @@ if name == "main": # Start Flask in background threading.Thread(target=lambda: f
 import nest_asyncio
 nest_asyncio.apply()
 
+app = create_app()
 logger.info("🤖 Starting MansourAI bot with polling...")
-asyncio.get_event_loop().run_until_complete(run_bot())
+asyncio.get_event_loop().run_until_complete(app.run_polling())
 
