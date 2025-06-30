@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: mansoursaibotlearn
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python main.py"
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        value: 7788071056:AAECYEfIuxQYcCyS_DgAYaif1JHc_v9A5U8
+      - key: WEBHOOK_URL
+        value: https://mansoursaibotlearn.onrender.com/webhook
+      - key: OPENAI_API_KEY
+        sync: false  # secure secret
