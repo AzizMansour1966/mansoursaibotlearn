@@ -1,63 +1,56 @@
-import os
-import asyncio
-from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+limport os
 from dotenv import load_dotenv
+import logging
+from flask import Flask, request
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# === Load local .env file (for dev) ===
-load_dotenv()
+# ✅ Only load .env.production if NOT on Render
+if not os.getenv("RENDER"):
+    load_dotenv(".env.production")
 
-# === Load environment variables ===
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# === Debug logging ===
-print("🔍 TELEGRAM_BOT_TOKEN =", BOT_TOKEN)
-print("🔍 WEBHOOK_URL =", repr(WEBHOOK_URL))  # Use repr to catch hidden newlines/spaces
-
-# === Error handling ===
-if not BOT_TOKEN:
+# ❌ Fail fast if not set
+if not TELEGRAM_BOT_TOKEN:
     raise ValueError("❌ TELEGRAM_BOT_TOKEN is not set.")
 if not WEBHOOK_URL:
     raise ValueError("❌ WEBHOOK_URL is not set.")
 
-# === Flask setup ===
+# 📝 Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 🧠 Flask + Telegram App
 app = Flask(__name__)
-bot = Bot(token=BOT_TOKEN)
-application = Application.builder().token(BOT_TOKEN).build()
+telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# === Telegram command handler ===
+# ✅ Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot is running!")
+    await update.message.reply_text("Hello! I'm your bot.")
 
-application.add_handler(CommandHandler("start", start))
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(update.message.text)
 
-# === Webhook endpoint ===
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    try:
-        update = Update.de_json(request.get_json(force=True), bot)
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            print("⚠️ Loop is closed. Skipping webhook processing.")
-            return "Shutting down", 503
-        asyncio.create_task(application.process_update(update))
-        return "OK", 200
-    except Exception as e:
-        print(f"❌ Webhook error: {e}")
-        return "Error", 500
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-# === Health check ===
-@app.route("/", methods=["GET"])
-def index():
-    return "🤖 Bot is alive", 200
+# 🌐 Webhook endpoint
+@app.post("/webhook")
+async def webhook():
+    update = Update.de_json(request.json, telegram_app.bot)
+    await telegram_app.process_update(update)
+    return "OK"
 
-# === Start bot with webhook ===
+# 🚀 Start bot with webhook
+async def run():
+    await telegram_app.initialize()
+    await telegram_app.bot.set_webhook(WEBHOOK_URL)
+    await telegram_app.start()
+    logger.info(f"🚀 Bot started with webhook {WEBHOOK_URL}")
+
+import asyncio
 if __name__ == "__main__":
-    async def setup():
-        await bot.set_webhook(WEBHOOK_URL)
-        print(f"🌐 Webhook set to: {WEBHOOK_URL}")
-
-    asyncio.run(setup())
-    app.run(host="0.0.0.0", port=10000)
+    asyncio.run(run())
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
