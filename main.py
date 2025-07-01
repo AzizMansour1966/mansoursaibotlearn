@@ -4,14 +4,16 @@ import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
-    Application, CommandHandler, ContextTypes, MessageHandler, filters
+    Application, CommandHandler, MessageHandler, ContextTypes, filters
 )
 from dotenv import load_dotenv
+import requests
+import nest_asyncio  # ✅ FIX
+nest_asyncio.apply()  # ✅ Needed for async inside sync (Flask)
 
-# Load .env vars
+# Load .env
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # Logging
@@ -21,17 +23,18 @@ logger = logging.getLogger(__name__)
 # Flask app
 app = Flask(__name__)
 
-# Telegram app (async, lazy load)
+# Telegram app
 application = Application.builder().token(TOKEN).build()
 
 # Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Hello! I'm alive and ready!")
 
-# Register handlers
 application.add_handler(CommandHandler("start", start))
 
-# Sync webhook handler for Render compatibility
+# Shared event loop (to avoid asyncio.run)
+loop = asyncio.get_event_loop()
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -42,25 +45,23 @@ def webhook():
             await application.initialize()
             await application.process_update(update)
 
-        asyncio.run(process())
+        # ✅ Run in same loop (no block or pool error)
+        loop.create_task(process())
         return "OK", 200
     except Exception as e:
         logger.exception("❌ Error processing update")
         return "Webhook error", 500
 
-# App entry point
+# Start
 if __name__ == "__main__":
     logger.info("🚀 Starting bot server...")
     logger.info(f"TOKEN: {'✔️' if TOKEN else '❌'}")
-    logger.info(f"OPENAI_KEY: {'✔️' if OPENAI_KEY else '❌'}")
     logger.info(f"WEBHOOK_URL: {'✔️' if WEBHOOK_URL else '❌'}")
 
     # Set webhook
-    import requests
     response = requests.get(
         f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={WEBHOOK_URL}/webhook"
     )
     logger.info("📡 Webhook response: %s", response.json())
 
-    # Run Flask
     app.run(host="0.0.0.0", port=5000)
