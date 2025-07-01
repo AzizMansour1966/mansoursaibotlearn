@@ -1,16 +1,12 @@
 import os
 import logging
 from flask import Flask, request
-from dotenv import load_dotenv
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-# Load environment variables
-load_dotenv(dotenv_path=".env.production")
-
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
 if not WEBHOOK_URL:
     raise ValueError("❌ WEBHOOK_URL is not set.")
@@ -22,10 +18,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 bot = Bot(token=TOKEN)
 
-# Telegram application
 telegram_app = Application.builder().token(TOKEN).build()
 
-# Commands
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Hello! I'm alive and ready.")
 
@@ -45,7 +39,6 @@ def webhook():
     telegram_app.update_queue.put_nowait(update)
     return "OK"
 
-# Set webhook when starting
 @app.before_first_request
 def setup_webhook():
     webhook_set = bot.set_webhook(f"{WEBHOOK_URL}/webhook")
