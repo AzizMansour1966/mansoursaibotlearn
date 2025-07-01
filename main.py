@@ -7,64 +7,59 @@ from telegram.ext import (
     Application, CommandHandler, ContextTypes
 )
 from dotenv import load_dotenv
-import requests
 
-# Load environment variables from .env.production explicitly
-load_dotenv(dotenv_path=".env.production")
-
+# Load .env vars
+load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+# Logging setup
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Flask app
 app = Flask(__name__)
 
-# Telegram Application (async)
+# Telegram app (async)
 application = Application.builder().token(TOKEN).build()
 
 # Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Received /start command from user %s", update.effective_user.id)
     await update.message.reply_text("👋 Hello! I'm alive and ready!")
 
 application.add_handler(CommandHandler("start", start))
 
-# Flask webhook route (sync) for Render compatibility
+# Sync webhook route for Render compatibility
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
         json_data = request.get_json(force=True)
         update = Update.de_json(json_data, application.bot)
 
-        async def process_update():
+        async def process():
             await application.initialize()
             await application.process_update(update)
 
-        asyncio.run(process_update())
+        asyncio.run(process())
         return "OK", 200
     except Exception as e:
-        logger.exception("❌ Error in webhook processing: %s", e)
+        logger.exception("❌ Error processing update")
         return "Webhook error", 500
 
+# App entry point
 if __name__ == "__main__":
     logger.info("🚀 Starting bot server...")
     logger.info(f"TOKEN: {'✔️' if TOKEN else '❌'}")
     logger.info(f"OPENAI_KEY: {'✔️' if OPENAI_KEY else '❌'}")
     logger.info(f"WEBHOOK_URL: {'✔️' if WEBHOOK_URL else '❌'}")
 
-    # Set webhook on Telegram side
-    try:
-        set_webhook_resp = requests.get(
-            f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={WEBHOOK_URL}/webhook"
-        )
-        logger.info("📡 Telegram setWebhook response: %s", set_webhook_resp.json())
-    except Exception as e:
-        logger.error("Failed to set Telegram webhook: %s", e)
+    # Set webhook (only once or on deploy)
+    import requests
+    response = requests.get(
+        f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={WEBHOOK_URL}/webhook"
+    )
+    logger.info("📡 Webhook response: %s", response.json())
 
     # Run Flask app
     app.run(host="0.0.0.0", port=5000)
