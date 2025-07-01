@@ -1,19 +1,15 @@
 import os
 import logging
-import asyncio
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, ContextTypes, filters
-)
+from telegram.ext import Application, CommandHandler, ContextTypes
 from dotenv import load_dotenv
-import requests
-import nest_asyncio  # ✅ FIX
-nest_asyncio.apply()  # ✅ Needed for async inside sync (Flask)
+import asyncio
 
-# Load .env
+# Load env vars
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # Logging
@@ -23,7 +19,10 @@ logger = logging.getLogger(__name__)
 # Flask app
 app = Flask(__name__)
 
-# Telegram app
+# Shared asyncio event loop
+loop = asyncio.get_event_loop()
+
+# Telegram bot app
 application = Application.builder().token(TOKEN).build()
 
 # Handlers
@@ -32,36 +31,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 application.add_handler(CommandHandler("start", start))
 
-# Shared event loop (to avoid asyncio.run)
-loop = asyncio.get_event_loop()
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
+# Webhook route
+@app.post("/webhook")
+async def webhook():
     try:
         json_data = request.get_json(force=True)
         update = Update.de_json(json_data, application.bot)
 
-        async def process():
-            await application.initialize()
-            await application.process_update(update)
+        await application.initialize()
+        await application.process_update(update)
 
-        # ✅ Run in same loop (no block or pool error)
-        loop.create_task(process())
         return "OK", 200
     except Exception as e:
-        logger.exception("❌ Error processing update")
+        logger.exception("❌ Webhook processing failed")
         return "Webhook error", 500
 
-# Start
+# Optional: route for root status check
+@app.get("/")
+def index():
+    return "🤖 MansoursAI is live!", 200
+
+# Start app
 if __name__ == "__main__":
-    logger.info("🚀 Starting bot server...")
+    logger.info("🚀 Starting MansoursAI bot...")
     logger.info(f"TOKEN: {'✔️' if TOKEN else '❌'}")
+    logger.info(f"OPENAI_KEY: {'✔️' if OPENAI_KEY else '❌'}")
     logger.info(f"WEBHOOK_URL: {'✔️' if WEBHOOK_URL else '❌'}")
 
-    # Set webhook
-    response = requests.get(
+    # Set webhook once
+    import requests
+    r = requests.get(
         f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={WEBHOOK_URL}/webhook"
     )
-    logger.info("📡 Webhook response: %s", response.json())
+    logger.info("📡 Webhook set result: %s", r.json())
 
     app.run(host="0.0.0.0", port=5000)
