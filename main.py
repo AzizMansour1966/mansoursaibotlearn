@@ -4,69 +4,60 @@ from flask import Flask, request
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from dotenv import load_dotenv
-import nest_asyncio
-import asyncio
 
 # Load environment variables
 load_dotenv()
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Get environment variables
+# Fetch keys
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-logger.info("🔍 ENV DEBUG")
-logger.info(f"TOKEN: {'✔️' if TOKEN else '❌'}")
-logger.info(f"OPENAI_KEY: {'✔️' if OPENAI_KEY else '❌'}")
-logger.info(f"WEBHOOK_URL: {'✔️' if WEBHOOK_URL else '❌'}")
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-if not all([TOKEN, OPENAI_KEY, WEBHOOK_URL]):
-    raise ValueError("❌ One or more required environment variables are missing.")
-
-# Set up Flask
+# Flask app
 app = Flask(__name__)
-
-# Enable nested event loops (important for Render)
-nest_asyncio.apply()
-
-# Create Telegram bot application
 bot = Bot(token=TOKEN)
-application = Application.builder().token(TOKEN).build()
 
-# Define command handlers
+# Telegram application
+telegram_app = Application.builder().token(TOKEN).build()
+
+# Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I'm alive and ready! 🚀")
+    await update.message.reply_text("👋 Hello! I'm alive and ready. 🚀")
 
-# Register handlers
-application.add_handler(CommandHandler("start", start))
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"You said: {update.message.text}")
 
-# Set webhook route
-@app.route("/webhook", methods=["POST"])
-async def webhook() -> str:
-    if request.method == "POST":
-        update = Update.de_json(request.get_json(force=True), bot)
-        await application.process_update(update)
-        return "OK"
-    return "Method not allowed", 405
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-# Set the webhook before the first request
-@app.before_request
-def setup_webhook_once():
-    if not application.bot_data.get("webhook_set"):
-        asyncio.get_event_loop().create_task(application.bot.set_webhook(url=WEBHOOK_URL))
-        application.bot_data["webhook_set"] = True
-        logger.info("✅ Webhook set on bot startup.")
-
-# Root route
+# Routes
 @app.route("/", methods=["GET"])
-def home():
-    return "Webhook set successfully."
+def healthcheck():
+    return "✅ Bot is running!"
 
-# Run the Flask app
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    telegram_app.update_queue.put_nowait(update)
+    return "OK"
+
 if __name__ == "__main__":
     logger.info("🚀 Starting bot server...")
+    logger.info("🔍 ENV DEBUG")
+    logger.info(f"TOKEN: {'✔️' if TOKEN else '❌'}")
+    logger.info(f"OPENAI_KEY: {'✔️' if OPENAI_KEY else '❌'}")
+    logger.info(f"WEBHOOK_URL: {'✔️' if WEBHOOK_URL else '❌'}")
+
+    # 🔧 Set webhook on startup
+    success = bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+    if success:
+        logger.info("✅ Webhook set successfully.")
+    else:
+        logger.error("❌ Failed to set webhook.")
+
+    # Run Flask app
     app.run(host="0.0.0.0", port=5000)
